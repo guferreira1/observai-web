@@ -1,0 +1,67 @@
+name: Web CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Next.js project
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect Node project
+        id: detect
+        shell: bash
+        run: |
+          if [ -f "package.json" ]; then
+            echo "node_project=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "node_project=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: steps.detect.outputs.node_project == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.detect.outputs.node_project == 'true'
+        run: |
+          if [ -f "package-lock.json" ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Lint
+        if: steps.detect.outputs.node_project == 'true'
+        run: npm run lint --if-present
+
+      - name: Type check
+        if: steps.detect.outputs.node_project == 'true'
+        run: npm run typecheck --if-present
+
+      - name: Test
+        if: steps.detect.outputs.node_project == 'true'
+        run: npm test --if-present
+
+      - name: Build
+        if: steps.detect.outputs.node_project == 'true'
+        run: npm run build
+
+      - name: Skip validation
+        if: steps.detect.outputs.node_project == 'false'
+        run: echo "package.json not found yet. Skipping Node validation until the project is initialized."
