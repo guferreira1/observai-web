@@ -265,28 +265,6 @@ The UI should not be tied to a specific observability provider or LLM provider.
 
 ---
 
-## Frontend architecture
-
-```txt
-observai-web
-├── app/                    # Next.js app router
-├── components/             # Shared UI components
-├── features/               # Product features by domain
-│   ├── analysis/           # Analysis workspace and result views
-│   ├── chat/               # Context-aware AI chat
-│   ├── providers/          # Observability provider configuration
-│   ├── llm/                # LLM provider configuration
-│   ├── dashboard/          # Home and overview screens
-│   └── settings/           # User and platform settings
-├── lib/                    # API clients, helpers and utilities
-├── hooks/                  # Reusable hooks
-├── styles/                 # Global styles
-├── public/                 # Static assets
-└── docs/                   # UI and product documentation
-```
-
----
-
 ## Suggested stack
 
 ObservAI Web is designed to be built with:
