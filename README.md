@@ -20,7 +20,7 @@ Analyze logs, metrics, traces and APM signals with your own AI provider.
 
 **ObservAI Web** is the frontend interface for ObservAI, an open-source and self-hosted AI platform for observability analysis.
 
-The web application allows users to configure observability providers, configure LLM providers, run technical analyses, inspect generated insights and continue the investigation through an integrated AI chat.
+The web application allows users to run technical analyses, inspect generated insights and continue the investigation through an integrated AI chat.
 
 ObservAI Web is designed for engineers, SREs, DevOps teams and platform teams who need a faster way to understand logs, metrics, traces, APM events and production behavior.
 
@@ -32,8 +32,6 @@ ObservAI Web is the user-facing layer of the ObservAI platform.
 
 It provides a modern interface for:
 
-- Configuring observability providers
-- Configuring LLM providers
 - Running observability analyses
 - Investigating logs, metrics and traces
 - Reviewing AI-generated diagnoses
@@ -53,7 +51,7 @@ The goal of the web interface is to make observability analysis feel simple, gui
 Instead of forcing users to manually jump between multiple tools, dashboards and query languages, ObservAI Web presents a single workflow:
 
 ```txt
-Connect providers
+Configure ObservAI API
    ↓
 Choose analysis scope
    ↓
@@ -77,8 +75,7 @@ The dashboard gives users a high-level view of the platform and recent analyses.
 It can show:
 
 - Recent investigations
-- Connected providers
-- LLM provider status
+- API runtime status
 - Analysis history
 - Severity overview
 - Most analyzed services
@@ -86,9 +83,11 @@ It can show:
 
 ---
 
-### Provider configuration
+### Runtime configuration
 
-Users can register observability providers such as:
+Observability providers and LLM providers are configured in ObservAI API before startup. This keeps secrets and provider-specific operational settings out of the browser.
+
+The API can be configured with observability providers such as:
 
 - Dynatrace
 - Datadog
@@ -114,12 +113,6 @@ Each provider can expose different signal types:
 | New Relic | ✅ | ✅ | ✅ | ✅ |
 | OpenTelemetry | ⚠️ | ✅ | ✅ | ⚠️ |
 
----
-
-### LLM configuration
-
-Users can connect their own AI provider.
-
 Supported LLM provider types include:
 
 - OpenAI
@@ -131,7 +124,7 @@ Supported LLM provider types include:
 - LM Studio
 - Local/self-hosted LLMs
 
-The user owns the token, the provider and the data flow.
+The user owns the token, the provider and the data flow. ObservAI Web consumes the backend runtime capabilities and does not manage provider credentials.
 
 ---
 
@@ -286,7 +279,8 @@ The goal is to provide a fast, modern and maintainable developer experience.
 ## Environment variables
 
 ```env
-NEXT_PUBLIC_OBSERVAI_API_URL=http://localhost:8080
+NEXT_PUBLIC_OBSERVAI_API_URL=/api/observai
+OBSERVAI_API_URL=http://localhost:8080
 NEXT_PUBLIC_APP_NAME=ObservAI
 NEXT_PUBLIC_APP_ENV=local
 ```
@@ -298,13 +292,19 @@ NEXT_PUBLIC_APP_ENV=local
 Install dependencies:
 
 ```bash
-npm install
+pnpm install
+```
+
+Create local environment:
+
+```bash
+cp .env.example .env.local
 ```
 
 Run the development server:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Open:
@@ -312,6 +312,60 @@ Open:
 ```txt
 http://localhost:3000
 ```
+
+The frontend browser calls the same-origin proxy at:
+
+```txt
+/api/observai
+```
+
+The proxy forwards requests server-side to:
+
+```env
+OBSERVAI_API_URL=http://localhost:8080
+```
+
+---
+
+## Implemented frontend structure
+
+This repository now contains the Next.js App Router frontend foundation:
+
+- Central HTTP client for ObservAI API
+- User-safe API errors, transient retry policy and global error boundaries
+- Zod schemas for API envelopes, analysis and chat contracts
+- TanStack Query hooks for health, analyses and chat
+- Dashboard, analysis workspace, analysis details, filtered evidence viewer, categorized trace insights, chat and history screens
+- Runtime status messaging that assumes providers and LLMs are backend-owned configuration
+
+Current backend contracts integrated:
+
+| Capability | Endpoint |
+|---|---|
+| API health | `GET /health` |
+| API readiness | `GET /readyz` |
+| Analysis history | `GET /v1/analyses` |
+| Submit analysis job | `POST /v1/analyses` |
+| Analysis job status | `GET /v1/jobs/{jobID}` |
+| Analysis details | `GET /v1/analyses/{analysisID}` |
+| Chat history | `GET /v1/analyses/{analysisID}/chat` |
+| Ask analysis question | `POST /v1/analyses/{analysisID}/chat` |
+
+Validation commands:
+
+```bash
+pnpm run lint
+pnpm run typecheck
+pnpm test
+pnpm run build
+```
+
+Additional documentation:
+
+- [Frontend architecture](docs/frontend-architecture.md)
+- [Integrated API contracts](docs/api-contracts.md)
+- [Run web with API](docs/run-web-and-api.md)
+- [Frontend roadmap](docs/frontend-roadmap.md)
 
 ---
 
@@ -334,7 +388,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_OBSERVAI_API_URL: http://localhost:8080
+      NEXT_PUBLIC_OBSERVAI_API_URL: /api/observai
+      OBSERVAI_API_URL: http://observai-api:8080
 ```
 
 ---
@@ -344,8 +399,7 @@ services:
 ObservAI Web depends on ObservAI API for:
 
 - Authentication
-- Provider configuration
-- LLM configuration
+- Runtime provider and LLM configuration
 - Analysis execution
 - Chat sessions
 - Analysis history

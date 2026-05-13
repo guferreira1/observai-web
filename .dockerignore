@@ -1,0 +1,14 @@
+.git
+.github
+.next
+.turbo
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+Dockerfile
+README.md
+.env*
+.codex
+.agents
+.idea
+tsconfig.tsbuildinfo

@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 188 84% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 42 91% 55%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 188 84% 32%;
+  }
+
+  .dark {
+    --background: 220 11% 17%;
+    --foreground: 210 24% 93%;
+    --card: 220 11% 21%;
+    --card-foreground: 210 24% 93%;
+    --primary: 184 72% 46%;
+    --primary-foreground: 210 24% 96%;
+    --secondary: 220 10% 26%;
+    --secondary-foreground: 210 24% 93%;
+    --muted: 220 9% 28%;
+    --muted-foreground: 215 14% 72%;
+    --accent: 42 88% 58%;
+    --accent-foreground: 222 33% 12%;
+    --destructive: 0 67% 57%;
+    --destructive-foreground: 210 24% 96%;
+    --border: 220 9% 31%;
+    --input: 220 9% 31%;
+    --ring: 184 72% 46%;
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer components {
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+}
