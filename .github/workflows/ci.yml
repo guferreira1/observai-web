@@ -1,75 +1,81 @@
 name: Web CI
 
-on:
+"on":
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: web-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  NEXT_TELEMETRY_DISABLED: "1"
+  NEXT_PUBLIC_OBSERVAI_API_URL: /api/observai
+  OBSERVAI_API_URL: http://127.0.0.1:65535
+
 jobs:
   validate:
-    name: Validate Next.js project
+    name: Validate Next.js source
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Detect Node project
-        id: detect
-        shell: bash
-        run: |
-          if [ -f "package.json" ]; then
-            echo "node_project=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "node_project=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Setup pnpm
-        if: steps.detect.outputs.node_project == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.32.1
+          run_install: false
 
       - name: Setup Node.js
-        if: steps.detect.outputs.node_project == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        if: steps.detect.outputs.node_project == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        if: steps.detect.outputs.node_project == 'true'
         run: pnpm run lint
 
       - name: Type check
-        if: steps.detect.outputs.node_project == 'true'
         run: pnpm run typecheck
 
-      - name: Test
-        if: steps.detect.outputs.node_project == 'true'
+      - name: Unit tests
         run: pnpm test
 
-      - name: Install Playwright browsers
-        if: steps.detect.outputs.node_project == 'true'
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: E2E test
-        if: steps.detect.outputs.node_project == 'true'
-        run: pnpm run test:e2e
-
-      - name: Build
-        if: steps.detect.outputs.node_project == 'true'
+      - name: Build application
         run: pnpm run build
 
-      - name: Docker build
-        if: steps.detect.outputs.node_project == 'true'
-        run: pnpm run docker:build
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
 
-      - name: Skip validation
-        if: steps.detect.outputs.node_project == 'false'
-        run: echo "package.json not found yet. Skipping Node validation until the project is initialized."
+      - name: E2E tests
+        run: pnpm run test:e2e
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: observai-web:ci
+          build-args: |
+            NEXT_PUBLIC_OBSERVAI_API_URL=/api/observai
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
