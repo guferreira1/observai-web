@@ -12,7 +12,12 @@ type RequestOptions<TSchema extends z.ZodTypeAny> = {
   method?: HttpMethod;
   body?: unknown;
   searchParams?: Record<string, string | number | undefined>;
+  headers?: HeadersInit;
   schema: TSchema;
+};
+
+type ApiFetchOptions = Omit<RequestOptions<z.ZodTypeAny>, "schema"> & {
+  headers?: HeadersInit;
 };
 
 export function buildApiUrl(path: string, searchParams?: RequestOptions<z.ZodTypeAny>["searchParams"]) {
@@ -63,19 +68,24 @@ function getApiLanguageHeader() {
   return locale && isSupportedLocale(locale) ? locale : defaultLocale;
 }
 
-export async function apiRequest<TSchema extends z.ZodTypeAny>({
+export async function apiFetch({
   path,
   method = "GET",
   body,
   searchParams,
-  schema
-}: RequestOptions<TSchema>) {
+  headers
+}: ApiFetchOptions) {
+  const requestHeaders = new Headers(headers);
+
+  requestHeaders.set("Accept-Language", getApiLanguageHeader());
+
+  if (body !== undefined && !requestHeaders.has("Content-Type")) {
+    requestHeaders.set("Content-Type", "application/json");
+  }
+
   const response = await fetch(buildApiUrl(path, searchParams), {
     method,
-    headers: {
-      "Accept-Language": getApiLanguageHeader(),
-      "Content-Type": "application/json"
-    },
+    headers: requestHeaders,
     body: body === undefined ? undefined : JSON.stringify(body)
   }).catch((error: unknown) => {
     if (error instanceof TypeError) {
@@ -88,6 +98,28 @@ export async function apiRequest<TSchema extends z.ZodTypeAny>({
   if (!response.ok) {
     await parseErrorResponse(response);
   }
+
+  return response;
+}
+
+export async function apiRequest<TSchema extends z.ZodTypeAny>({
+  path,
+  method = "GET",
+  body,
+  searchParams,
+  headers,
+  schema
+}: RequestOptions<TSchema>) {
+  const response = await apiFetch({
+    path,
+    method,
+    body,
+    searchParams,
+    headers: {
+      ...headers,
+      Accept: "application/json"
+    }
+  });
 
   const payload = await response.json().catch(() => {
     throw new ApiResponseValidationError();

@@ -19,7 +19,7 @@ export function AnalysisList({ limit = 10 }: AnalysisListProps) {
   const { formatRelativeDate, t, withLocalePath } = useI18n();
 
   if (analysesQuery.isLoading) {
-    return <LoadingState title="Loading analyses" />;
+    return <LoadingState title={t("analysisList.loading")} />;
   }
 
   if (analysesQuery.isError) {
@@ -43,11 +43,11 @@ export function AnalysisList({ limit = 10 }: AnalysisListProps) {
   if (analyses.length === 0) {
     return (
       <EmptyState
-        title="No analyses found"
-        description="Run an analysis to create an investigation record connected to evidence, root causes and recommendations."
+        title={t("analysisList.empty.title")}
+        description={t("analysisList.empty.description")}
         action={
           <Button asChild>
-            <Link href={withLocalePath("/analyses/new")}>Start analysis</Link>
+            <Link href={withLocalePath("/analyses/new")}>{t("analysisList.empty.action")}</Link>
           </Button>
         }
       />
@@ -57,8 +57,8 @@ export function AnalysisList({ limit = 10 }: AnalysisListProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recent analyses</CardTitle>
-        <CardDescription>Live results returned by the ObservAI API.</CardDescription>
+        <CardTitle>{t("analysisList.recent.title")}</CardTitle>
+        <CardDescription>{t("analysisList.recent.description")}</CardDescription>
       </CardHeader>
       <CardContent className="divide-y p-0">
         {analyses.map((analysis) => (
@@ -76,12 +76,12 @@ export function AnalysisList({ limit = 10 }: AnalysisListProps) {
               <p className="mt-2 text-xs text-muted-foreground">
                 {analysis.affectedServices.length > 0
                   ? analysis.affectedServices.join(", ")
-                  : "No affected services reported"}
+                  : t("analysisList.noAffectedServices")}
               </p>
             </div>
             <div className="text-left text-xs text-muted-foreground md:text-right">
               <div>{analysis.evidence.length} {t("common.evidence").toLowerCase()}</div>
-              <div>{analysis.recommendedActions.length} actions</div>
+              <div>{t("analysisList.actionCount", { count: analysis.recommendedActions.length })}</div>
             </div>
           </Link>
         ))}

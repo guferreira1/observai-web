@@ -59,9 +59,21 @@ jobs:
         if: steps.detect.outputs.node_project == 'true'
         run: pnpm test
 
+      - name: Install Playwright browsers
+        if: steps.detect.outputs.node_project == 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E test
+        if: steps.detect.outputs.node_project == 'true'
+        run: pnpm run test:e2e
+
       - name: Build
         if: steps.detect.outputs.node_project == 'true'
         run: pnpm run build
+
+      - name: Docker build
+        if: steps.detect.outputs.node_project == 'true'
+        run: pnpm run docker:build
 
       - name: Skip validation
         if: steps.detect.outputs.node_project == 'false'

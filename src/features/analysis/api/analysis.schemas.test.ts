@@ -55,6 +55,25 @@ describe("analysis schemas", () => {
     expect(parsedAnalysis.id).toBe("analysis-123");
   });
 
+  it("rejects severities that are not part of the public API contract", () => {
+    const result = analysisSchema.safeParse({
+      id: "analysis-123",
+      summary: "checkout-service has informational noise",
+      severity: "info",
+      confidence: "medium",
+      affectedServices: ["checkout-service"],
+      evidence: [],
+      detectedAnomalies: [],
+      possibleRootCauses: [],
+      recommendedActions: [],
+      codeLevelInsights: [],
+      missingEvidence: [],
+      createdAt: "2026-05-13T12:00:00Z"
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects unsupported signal values before sending requests", () => {
     const result = createAnalysisRequestSchema.safeParse({
       goal: "Analyze checkout-service",

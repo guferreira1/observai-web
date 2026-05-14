@@ -1,19 +1,27 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
 import {
   useAnalysisJobQuery,
   useCancelAnalysisJobMutation,
-  useCreateAnalysisMutation
+  useCreateAnalysisMutation,
+  useServicesQuery
 } from "@/features/analysis/api/analysis.queries";
 import { availableSignals } from "@/features/analysis/domain/analysis.constants";
 import type { AnalysisJobPhase, Signal } from "@/features/analysis/api/analysis.schemas";
 import { useCapabilitiesQuery } from "@/features/capabilities/api/capabilities.queries";
+import {
+  analysisJobQueryParam,
+  clearPersistedAnalysisJobId,
+  createAnalysisJobUrl,
+  persistAnalysisJobId,
+  resolvePersistedAnalysisJobId
+} from "@/features/analysis/domain/analysis-job-persistence";
 import {
   createDefaultTimeWindow,
   createTimeWindowFromDuration,
@@ -115,6 +123,23 @@ function parseAffectedServices(rawServices: string) {
     .filter(Boolean);
 }
 
+function getActiveServiceSearch(rawServices: string) {
+  const serviceParts = rawServices.split(/[\n,]/);
+  return serviceParts.at(-1)?.trim() ?? "";
+}
+
+function replaceActiveService(rawServices: string, selectedService: string) {
+  const lastCommaIndex = rawServices.lastIndexOf(",");
+  const lastLineBreakIndex = rawServices.lastIndexOf("\n");
+  const lastDelimiterIndex = Math.max(lastCommaIndex, lastLineBreakIndex);
+
+  if (lastDelimiterIndex === -1) {
+    return selectedService;
+  }
+
+  return `${rawServices.slice(0, lastDelimiterIndex + 1)} ${selectedService}`;
+}
+
 function createDefaultValues(): AnalysisFormValues {
   const timeWindow = createDefaultTimeWindow();
 
@@ -130,6 +155,8 @@ function createDefaultValues(): AnalysisFormValues {
 
 export function AnalysisWorkspace() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t, withLocalePath } = useI18n();
   const createAnalysisMutation = useCreateAnalysisMutation();
   const cancelAnalysisJobMutation = useCancelAnalysisJobMutation();
@@ -141,8 +168,12 @@ export function AnalysisWorkspace() {
     resolver: zodResolver(localizedAnalysisFormSchema),
     defaultValues: createDefaultValues()
   });
+  const affectedServicesValue = form.watch("affectedServices");
+  const serviceSearch = getActiveServiceSearch(affectedServicesValue);
+  const servicesQuery = useServicesQuery({ q: serviceSearch || undefined, limit: 8 });
   const activeJob = analysisJobQuery.data;
   const isJobRunning = activeJob?.status === "pending" || activeJob?.status === "running";
+  const canClearJobState = activeJobId.length > 0 && !cancelAnalysisJobMutation.isPending;
   const supportedSignals = useMemo(() => {
     const discoveredSignals = new Set<Signal>();
 
@@ -158,12 +189,49 @@ export function AnalysisWorkspace() {
   }, [capabilitiesQuery.data?.data.observability, capabilitiesQuery.isSuccess]);
   const capabilityProviders = capabilitiesQuery.data?.data.observability ?? [];
 
+  const replaceJobUrl = useCallback((jobId: string) => {
+    router.replace(createAnalysisJobUrl(pathname, new URLSearchParams(searchParams.toString()), jobId));
+  }, [pathname, router, searchParams]);
+
+  const activateJob = useCallback((jobId: string) => {
+    const persistedJobId = persistAnalysisJobId(jobId, window.localStorage);
+
+    setActiveJobId(persistedJobId);
+    replaceJobUrl(persistedJobId);
+  }, [replaceJobUrl]);
+
+  const clearJobState = useCallback(() => {
+    clearPersistedAnalysisJobId(window.localStorage);
+    setActiveJobId("");
+    replaceJobUrl("");
+  }, [replaceJobUrl]);
+
+  useEffect(() => {
+    const persistedJobId = resolvePersistedAnalysisJobId(
+      new URLSearchParams(searchParams.toString()),
+      window.localStorage
+    );
+
+    if (!persistedJobId || persistedJobId === activeJobId) {
+      return;
+    }
+
+    setActiveJobId(persistedJobId);
+    persistAnalysisJobId(persistedJobId, window.localStorage);
+
+    if (searchParams.get(analysisJobQueryParam) !== persistedJobId) {
+      replaceJobUrl(persistedJobId);
+    }
+  }, [activeJobId, replaceJobUrl, searchParams]);
+
   useEffect(() => {
     if (activeJob?.status !== "completed" || !activeJob.analysisId) {
       return;
     }
 
-    router.push(withLocalePath(`/analyses/${activeJob.analysisId}`));
+    clearPersistedAnalysisJobId(window.localStorage);
+    setActiveJobId("");
+    router.replace(withLocalePath(`/analyses/${activeJob.analysisId}`));
   }, [activeJob, router, withLocalePath]);
 
   useEffect(() => {
@@ -196,6 +264,13 @@ export function AnalysisWorkspace() {
     form.setValue("context", nextContext, { shouldDirty: true });
   }
 
+  function applyServiceSuggestion(service: string) {
+    form.setValue("affectedServices", replaceActiveService(form.getValues("affectedServices"), service), {
+      shouldDirty: true,
+      shouldValidate: true
+    });
+  }
+
   async function handleSubmit(values: AnalysisFormValues) {
     try {
       const acceptedJob = await createAnalysisMutation.mutateAsync({
@@ -209,7 +284,7 @@ export function AnalysisWorkspace() {
         context: values.context
       });
 
-      setActiveJobId(acceptedJob.jobId);
+      activateJob(acceptedJob.jobId);
     } catch {
       // Mutation state renders a safe user-facing error in the execution panel.
     }
@@ -291,6 +366,21 @@ export function AnalysisWorkspace() {
                 placeholder="checkout-service, payment-service"
                 {...form.register("affectedServices")}
               />
+              {servicesQuery.data?.data.items.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {servicesQuery.data.data.items.map((service) => (
+                    <Button
+                      key={service}
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => applyServiceSuggestion(service)}
+                    >
+                      {service}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
               <p className="text-xs text-muted-foreground">{t("newAnalysis.affectedServices.help")}</p>
             </div>
 
@@ -423,6 +513,16 @@ export function AnalysisWorkspace() {
                   {cancelAnalysisJobMutation.isPending
                     ? t("newAnalysis.cancel.running")
                     : t("newAnalysis.cancel.idle")}
+                </Button>
+              ) : null}
+              {canClearJobState ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={clearJobState}
+                >
+                  {t("newAnalysis.clearJobState")}
                 </Button>
               ) : null}
               {activeJobId ? (

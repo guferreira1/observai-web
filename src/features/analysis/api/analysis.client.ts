@@ -1,7 +1,8 @@
-import { apiRequest } from "@/shared/api/http-client";
+import { apiFetch, apiRequest } from "@/shared/api/http-client";
 import {
   analysisJobAcceptedSchema,
   analysisJobSchema,
+  analysisExportFormatSchema,
   analysisListResponseSchema,
   analysisStatsResponseSchema,
   analysisSchema,
@@ -9,6 +10,7 @@ import {
   servicesResponseSchema,
   traceInsightsResponseSchema,
   type AnalysisStatsFilter,
+  type AnalysisExportFormat,
   type AnalysisListFilter,
   type CreateAnalysisRequest,
   type ServicesFilter
@@ -62,6 +64,31 @@ export async function getAnalysisTraces(analysisId: string) {
   return response.data;
 }
 
+function getExportFilename(response: Response, analysisId: string, format: AnalysisExportFormat) {
+  const contentDisposition = response.headers.get("content-disposition");
+  const filenameMatch = contentDisposition?.match(/filename="?([^";]+)"?/i);
+
+  return filenameMatch?.[1] ?? `observai-analysis-${analysisId}.${format}`;
+}
+
+export async function exportAnalysis(analysisId: string, format: AnalysisExportFormat) {
+  const exportFormat = analysisExportFormatSchema.parse(format);
+  const response = await apiFetch({
+    path: `/v1/analyses/${analysisId}/export`,
+    searchParams: {
+      format: exportFormat
+    },
+    headers: {
+      Accept: exportFormat === "md" ? "text/markdown" : "application/json"
+    }
+  });
+
+  return {
+    blob: await response.blob(),
+    filename: getExportFilename(response, analysisId, exportFormat)
+  };
+}
+
 export async function createAnalysis(request: CreateAnalysisRequest) {
   const payload = createAnalysisRequestSchema.parse(request);
   const response = await apiRequest({
@@ -91,4 +118,13 @@ export async function cancelAnalysisJob(jobId: string) {
   });
 
   return response.data;
+}
+
+export async function deleteAnalysis(analysisId: string) {
+  await apiFetch({
+    path: `/v1/analyses/${analysisId}`,
+    method: "DELETE"
+  });
+
+  return {};
 }

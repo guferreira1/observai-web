@@ -1,13 +1,16 @@
 "use client";
 
-import { Clipboard, MessageSquare, Network, Activity } from "lucide-react";
+import { Clipboard, Download, FileJson, MessageSquare, Network, Activity } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { useAnalysisQuery } from "@/features/analysis/api/analysis.queries";
+import { useAnalysisExportMutation, useAnalysisQuery } from "@/features/analysis/api/analysis.queries";
+import type { AnalysisExportFormat } from "@/features/analysis/api/analysis.schemas";
+import { ActionPlan } from "@/features/analysis/components/action-plan";
 import { AnalysisTabs } from "@/features/analysis/components/analysis-tabs";
 import { SeverityBadge } from "@/features/analysis/components/severity-badge";
 import { buildAnalysisExportText } from "@/features/analysis/domain/analysis.result-export";
+import { buildEvidenceViewerHref } from "@/features/analysis/domain/evidence.navigation";
 import { toUserFacingError } from "@/shared/api/errors";
 import { useI18n } from "@/shared/i18n/i18n-provider";
 import { Badge } from "@/shared/ui/badge";
@@ -22,11 +25,12 @@ type AnalysisDetailProps = {
 
 export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
   const analysisQuery = useAnalysisQuery(analysisId);
+  const analysisExportMutation = useAnalysisExportMutation(analysisId);
   const { formatDateTime, t, withLocalePath } = useI18n();
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   if (analysisQuery.isLoading) {
-    return <LoadingState title="Loading analysis" />;
+    return <LoadingState title={t("loading.analysis")} />;
   }
 
   if (analysisQuery.isError) {
@@ -56,9 +60,7 @@ export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
     );
   }
 
-  const sortedRecommendedActions = analysis.recommendedActions.toSorted(
-    (firstAction, secondAction) => firstAction.priority - secondAction.priority
-  );
+  const evidenceIds = new Set(analysis.evidence.map((evidenceEntry) => evidenceEntry.id));
 
   async function copyAnalysisResult() {
     if (!analysis) {
@@ -71,6 +73,19 @@ export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
     } catch {
       setCopyStatus("failed");
     }
+  }
+
+  async function downloadAnalysisResult(format: AnalysisExportFormat) {
+    const exportedAnalysis = await analysisExportMutation.mutateAsync(format);
+    const objectUrl = URL.createObjectURL(exportedAnalysis.blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = objectUrl;
+    anchor.download = exportedAnalysis.filename;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
   }
 
   return (
@@ -87,6 +102,24 @@ export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
               <Clipboard className="h-4 w-4" aria-hidden="true" />
               {copyStatus === "copied" ? t("common.copied") : t("analysisDetail.copyResult")}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={analysisExportMutation.isPending}
+              onClick={() => void downloadAnalysisResult("md")}
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              {t("analysisDetail.exportMarkdown")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={analysisExportMutation.isPending}
+              onClick={() => void downloadAnalysisResult("json")}
+            >
+              <FileJson className="h-4 w-4" aria-hidden="true" />
+              {t("analysisDetail.exportJson")}
+            </Button>
             <Button asChild>
               <Link href={withLocalePath(`/analyses/${analysis.id}/chat`)}>
                 <MessageSquare className="h-4 w-4" aria-hidden="true" />
@@ -100,17 +133,18 @@ export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
 
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <div className="space-y-4">
-          <Card>
+          <Card className="relative overflow-hidden border-primary/20">
+            <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-primary/20 via-primary/10 to-transparent" aria-hidden="true" />
             <CardHeader>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex flex-wrap items-center gap-2">
                 <SeverityBadge severity={analysis.severity} />
                 <Badge variant="outline">{t("common.confidence")}: {analysis.confidence}</Badge>
                 <Badge variant="secondary">{analysis.evidence.length} {t("common.evidenceItems")}</Badge>
               </div>
-              <CardTitle className="pt-3">{t("common.summary")}</CardTitle>
+              <CardTitle className="relative pt-3 text-xl">{t("common.summary")}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm leading-6">{analysis.summary}</p>
+            <CardContent className="relative space-y-4">
+              <p className="max-w-4xl text-base leading-7">{analysis.summary}</p>
               <div className="grid gap-2 md:grid-cols-3">
                 <Button asChild variant="outline">
                   <Link href={withLocalePath(`/analyses/${analysis.id}/evidence`)}>
@@ -134,6 +168,9 @@ export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
               {copyStatus === "failed" ? (
                 <p className="text-xs text-destructive">{t("analysisDetail.clipboardFailed")}</p>
               ) : null}
+              {analysisExportMutation.isError ? (
+                <p className="text-xs text-destructive">{t("analysisDetail.exportFailed")}</p>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -145,7 +182,7 @@ export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
             <CardContent className="space-y-4">
               {analysis.possibleRootCauses.length > 0 ? (
                 analysis.possibleRootCauses.map((rootCause) => (
-                  <div key={rootCause.cause} className="rounded-md border p-4">
+                  <div key={rootCause.cause} className="inner-surface p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="text-sm font-semibold">{rootCause.cause}</h3>
                       <Badge variant="secondary">{rootCause.confidence} {t("common.confidence").toLowerCase()}</Badge>
@@ -154,7 +191,16 @@ export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
                       <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                         {rootCause.evidence.map((evidence) => (
                           <li key={evidence} className="rounded-md bg-secondary/50 px-3 py-2">
-                            {evidence}
+                            {evidenceIds.has(evidence) ? (
+                              <Link
+                                href={withLocalePath(buildEvidenceViewerHref(analysis.id, evidence))}
+                                className="focus-ring inline-flex rounded-sm font-medium text-primary hover:underline"
+                              >
+                                {evidence}
+                              </Link>
+                            ) : (
+                              evidence
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -167,31 +213,7 @@ export function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("analysisDetail.recommendedActions.title")}</CardTitle>
-              <CardDescription>{t("analysisDetail.recommendedActions.description")}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {analysis.recommendedActions.length > 0 ? (
-                sortedRecommendedActions.map((recommendation) => (
-                  <div key={`${recommendation.priority}-${recommendation.action}`} className="rounded-md border p-4">
-                    <div className="flex items-start gap-3">
-                      <Badge variant={recommendation.priority === 1 ? "high" : "outline"}>
-                        P{recommendation.priority}
-                      </Badge>
-                      <div>
-                        <h3 className="text-sm font-semibold">{recommendation.action}</h3>
-                        <p className="mt-2 text-sm text-muted-foreground">{recommendation.rationale}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">{t("analysisDetail.recommendedActions.empty")}</p>
-              )}
-            </CardContent>
-          </Card>
+          <ActionPlan analysis={analysis} />
         </div>
 
         <aside className="space-y-4">

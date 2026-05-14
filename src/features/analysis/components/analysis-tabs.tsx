@@ -19,12 +19,12 @@ export function AnalysisTabs({ analysisId }: AnalysisTabsProps) {
   const tabs = [
     { label: t("common.summary"), href: `/analyses/${analysisId}`, icon: FileText },
     { label: t("common.evidence"), href: `/analyses/${analysisId}/evidence`, icon: Activity },
-    { label: "Trace insights", href: `/analyses/${analysisId}/traces`, icon: Network },
+    { label: t("traceInsights.page.title"), href: `/analyses/${analysisId}/traces`, icon: Network },
     { label: t("chat.page.title"), href: `/analyses/${analysisId}/chat`, icon: MessageSquare }
   ];
 
   return (
-    <nav className="mb-6 flex gap-2 overflow-x-auto border-b" aria-label="Analysis sections">
+    <nav className="mb-6 flex gap-2 overflow-x-auto border-b" aria-label={t("analysisTabs.sections")}>
       {tabs.map((tab) => {
         const TabIcon = tab.icon;
 

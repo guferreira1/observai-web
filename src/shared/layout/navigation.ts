@@ -1,6 +1,8 @@
 import {
   Gauge,
   History,
+  ServerCog,
+  ShieldCheck,
   SearchCode
 } from "lucide-react";
 
@@ -21,6 +23,16 @@ export const primaryNavigation = [
     labelKey: "navigation.analysisHistory",
     href: "/history",
     icon: History
+  },
+  {
+    labelKey: "navigation.runtime",
+    href: "/runtime",
+    icon: ServerCog
+  },
+  {
+    labelKey: "navigation.admin",
+    href: "/admin",
+    icon: ShieldCheck
   }
 ] satisfies Array<{
   labelKey: TranslationKey;

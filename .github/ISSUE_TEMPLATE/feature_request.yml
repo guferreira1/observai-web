@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest an improvement for ObservAI Web.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the observability workflow this improves. Do not include secrets, private evidence or unreduced production payloads.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem or operational workflow should this solve?
+      placeholder: Engineers need to compare evidence across related analyses before deciding the next action.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should ObservAI Web do?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard
+        - New analysis
+        - Analysis detail
+        - Evidence viewer
+        - Trace insights
+        - AI chat
+        - History
+        - API integration
+        - Accessibility
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider?
+  - type: textarea
+    id: api_contract
+    attributes:
+      label: API contract impact
+      description: Does this require a new or changed ObservAI API endpoint, field or behavior?
+      placeholder: No API changes expected, or describe the expected contract.

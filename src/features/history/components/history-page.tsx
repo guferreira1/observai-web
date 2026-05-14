@@ -1,11 +1,17 @@
 "use client";
 
+import { Activity, Copy, Download, FileText, MessageSquare, Network, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 
 import type { AnalysisListOrder, AnalysisListSort, Severity, Signal } from "@/features/analysis/api/analysis.schemas";
-import { useAnalysesQuery, useServicesQuery } from "@/features/analysis/api/analysis.queries";
+import {
+  useAnalysesQuery,
+  useDeleteAnalysisMutation,
+  useExportAnalysisMutation,
+  useServicesQuery
+} from "@/features/analysis/api/analysis.queries";
 import { SeverityBadge } from "@/features/analysis/components/severity-badge";
 import { availableSignals, severityOrder } from "@/features/analysis/domain/analysis.constants";
 import { useCapabilitiesQuery } from "@/features/capabilities/api/capabilities.queries";
@@ -109,6 +115,8 @@ export function HistoryPage() {
     sort,
     order
   });
+  const exportAnalysisMutation = useExportAnalysisMutation();
+  const deleteAnalysisMutation = useDeleteAnalysisMutation();
   const analyses = useMemo(() => analysesQuery.data?.data.items ?? [], [analysesQuery.data?.data.items]);
   const capabilities = capabilitiesQuery.data?.data;
   const providerOptions = capabilities?.observability.map((capability) => capability.provider) ?? [];
@@ -145,6 +153,39 @@ export function HistoryPage() {
     }
 
     replaceHistoryUrl(nextSearchParams);
+  }
+
+  async function copyAnalysisLink(analysisId: string) {
+    const analysisPath = withLocalePath(`/analyses/${analysisId}`);
+    const analysisUrl = new URL(analysisPath, window.location.origin);
+
+    await navigator.clipboard.writeText(analysisUrl.toString()).catch(() => undefined);
+  }
+
+  async function downloadAnalysisMarkdown(analysisId: string) {
+    const exportedAnalysis = await exportAnalysisMutation.mutateAsync({
+      analysisId,
+      format: "md"
+    });
+    const objectUrl = URL.createObjectURL(exportedAnalysis.blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = objectUrl;
+    anchor.download = exportedAnalysis.filename;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  async function deleteStoredAnalysis(analysisId: string) {
+    const confirmed = window.confirm(t("history.actions.deleteConfirm"));
+
+    if (!confirmed) {
+      return;
+    }
+
+    await deleteAnalysisMutation.mutateAsync(analysisId).catch(() => undefined);
   }
 
   return (
@@ -288,8 +329,43 @@ export function HistoryPage() {
               {t("history.recordsShown", { count: analyses.length, total })}
             </CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto p-0">
-            <table className="w-full min-w-[760px] text-left text-sm">
+          <CardContent className="p-0">
+            <div className="grid gap-3 p-4 md:hidden">
+              {analyses.map((analysis) => (
+                <article key={analysis.id} className="rounded-md border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <SeverityBadge severity={analysis.severity} />
+                    <span className="text-xs text-muted-foreground">{formatDateTime(analysis.createdAt)}</span>
+                  </div>
+                  <Link
+                    href={withLocalePath(`/analyses/${analysis.id}`)}
+                    className="focus-ring mt-3 block rounded-sm text-sm font-semibold leading-6 hover:underline"
+                  >
+                    {analysis.summary}
+                  </Link>
+                  <div className="mt-3 flex flex-wrap gap-1">
+                    {analysis.affectedServices.map((affectedService) => (
+                      <Badge key={affectedService} variant="secondary">
+                        {affectedService}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    {analysis.evidence.length} {t("common.evidenceItems")}
+                  </div>
+                  <AnalysisHistoryActions
+                    analysisId={analysis.id}
+                    exportDisabled={exportAnalysisMutation.isPending}
+                    onCopyLink={copyAnalysisLink}
+                    onDownloadMarkdown={downloadAnalysisMarkdown}
+                    onDeleteAnalysis={deleteStoredAnalysis}
+                  />
+                </article>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[940px] text-left text-sm">
               <thead className="border-b bg-secondary text-xs text-muted-foreground">
                 <tr>
                   <th className="px-5 py-3 font-medium">{t("common.created")}</th>
@@ -297,6 +373,7 @@ export function HistoryPage() {
                   <th className="px-5 py-3 font-medium">{t("common.summary")}</th>
                   <th className="px-5 py-3 font-medium">{t("common.services")}</th>
                   <th className="px-5 py-3 font-medium">{t("common.evidence")}</th>
+                  <th className="px-5 py-3 text-right font-medium">{t("common.actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -321,10 +398,20 @@ export function HistoryPage() {
                       </div>
                     </td>
                     <td className="px-5 py-4 text-muted-foreground">{analysis.evidence.length}</td>
+                    <td className="px-5 py-4">
+                      <AnalysisHistoryActions
+                        analysisId={analysis.id}
+                        exportDisabled={exportAnalysisMutation.isPending}
+                        onCopyLink={copyAnalysisLink}
+                        onDownloadMarkdown={downloadAnalysisMarkdown}
+                        onDeleteAnalysis={deleteStoredAnalysis}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
               <p className="text-xs text-muted-foreground">
                 {t("history.pagination", {
@@ -356,6 +443,69 @@ export function HistoryPage() {
         </Card>
       ) : null}
     </>
+  );
+}
+
+function AnalysisHistoryActions({
+  analysisId,
+  exportDisabled,
+  onCopyLink,
+  onDownloadMarkdown,
+  onDeleteAnalysis
+}: {
+  analysisId: string;
+  exportDisabled: boolean;
+  onCopyLink: (analysisId: string) => Promise<void>;
+  onDownloadMarkdown: (analysisId: string) => Promise<void>;
+  onDeleteAnalysis: (analysisId: string) => Promise<void>;
+}) {
+  const { t, withLocalePath } = useI18n();
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2 md:mt-0 md:justify-end">
+      <Button asChild variant="outline" size="sm">
+        <Link href={withLocalePath(`/analyses/${analysisId}`)}>
+          <FileText className="h-4 w-4" aria-hidden="true" />
+          {t("history.actions.open")}
+        </Link>
+      </Button>
+      <Button asChild variant="outline" size="sm">
+        <Link href={withLocalePath(`/analyses/${analysisId}/evidence`)}>
+          <Activity className="h-4 w-4" aria-hidden="true" />
+          {t("common.evidence")}
+        </Link>
+      </Button>
+      <Button asChild variant="outline" size="sm">
+        <Link href={withLocalePath(`/analyses/${analysisId}/traces`)}>
+          <Network className="h-4 w-4" aria-hidden="true" />
+          {t("common.traces")}
+        </Link>
+      </Button>
+      <Button asChild variant="outline" size="sm">
+        <Link href={withLocalePath(`/analyses/${analysisId}/chat`)}>
+          <MessageSquare className="h-4 w-4" aria-hidden="true" />
+          {t("common.chat")}
+        </Link>
+      </Button>
+      <Button type="button" variant="outline" size="sm" onClick={() => void onCopyLink(analysisId)}>
+        <Copy className="h-4 w-4" aria-hidden="true" />
+        {t("history.actions.copyLink")}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={exportDisabled}
+        onClick={() => void onDownloadMarkdown(analysisId)}
+      >
+        <Download className="h-4 w-4" aria-hidden="true" />
+        {t("history.actions.exportMarkdown")}
+      </Button>
+      <Button type="button" variant="outline" size="sm" onClick={() => void onDeleteAnalysis(analysisId)}>
+        <Trash2 className="h-4 w-4" aria-hidden="true" />
+        {t("history.actions.delete")}
+      </Button>
+    </div>
   );
 }
 

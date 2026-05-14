@@ -1,5 +1,5 @@
 import { severityOrder } from "@/features/analysis/domain/analysis.constants";
-import type { Analysis, Severity } from "@/features/analysis/api/analysis.schemas";
+import type { Analysis, AnalysisStatsResponse, Confidence, Severity } from "@/features/analysis/api/analysis.schemas";
 
 export type AnalysisDashboardMetrics = {
   totalAnalyses: number;
@@ -9,9 +9,26 @@ export type AnalysisDashboardMetrics = {
   severityCounts: Record<Severity, number>;
 };
 
+export type AnalysisStatsCountMetric<TCategory extends string> = {
+  category: TCategory;
+  count: number;
+};
+
+export type AnalysisStatsTrendMetric = {
+  bucketStart: string;
+  count: number;
+};
+
+export type AnalysisStatsServiceMetric = {
+  service: string;
+  count: number;
+  percentage: number;
+};
+
+export const confidenceOrder: Confidence[] = ["high", "medium", "low"];
+
 function createSeverityCounts(): Record<Severity, number> {
   return {
-    info: 0,
     low: 0,
     medium: 0,
     high: 0,
@@ -40,4 +57,52 @@ export function buildAnalysisDashboardMetrics(analyses: Analysis[]): AnalysisDas
     latestSeverity,
     severityCounts
   };
+}
+
+function readStatsCount(counts: Record<string, number> | undefined, category: string) {
+  return counts?.[category] ?? 0;
+}
+
+export function buildSeverityDistribution(
+  analysisStats?: AnalysisStatsResponse
+): Array<AnalysisStatsCountMetric<Severity>> {
+  return severityOrder.map((severity) => ({
+    category: severity,
+    count: readStatsCount(analysisStats?.bySeverity, severity)
+  }));
+}
+
+export function buildConfidenceDistribution(
+  analysisStats?: AnalysisStatsResponse
+): Array<AnalysisStatsCountMetric<Confidence>> {
+  return confidenceOrder.map((confidence) => ({
+    category: confidence,
+    count: readStatsCount(analysisStats?.byConfidence, confidence)
+  }));
+}
+
+export function buildTrendMetrics(analysisStats?: AnalysisStatsResponse): AnalysisStatsTrendMetric[] {
+  return (analysisStats?.trendBuckets ?? [])
+    .map((bucket) => ({
+      bucketStart: bucket.bucketStart,
+      count: bucket.count
+    }))
+    .sort((firstBucket, secondBucket) => firstBucket.bucketStart.localeCompare(secondBucket.bucketStart));
+}
+
+export function buildTopAffectedServiceMetrics(
+  analysisStats?: AnalysisStatsResponse,
+  limit = 5
+): AnalysisStatsServiceMetric[] {
+  const totalAnalyses = analysisStats?.total ?? 0;
+
+  return (analysisStats?.topAffectedServices ?? []).slice(0, limit).map((serviceMetric) => ({
+    service: serviceMetric.service,
+    count: serviceMetric.count,
+    percentage: totalAnalyses > 0 ? Math.round((serviceMetric.count / totalAnalyses) * 100) : 0
+  }));
+}
+
+export function hasMetricCounts<TCategory extends string>(metrics: Array<AnalysisStatsCountMetric<TCategory>>) {
+  return metrics.some((metric) => metric.count > 0);
 }

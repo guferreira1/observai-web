@@ -42,6 +42,7 @@ function buildForwardHeaders(request: NextRequest) {
   const contentType = request.headers.get("content-type");
   const accept = request.headers.get("accept");
   const acceptLanguage = request.headers.get("accept-language");
+  const authorization = request.headers.get("authorization");
   const requestId = request.headers.get("x-request-id");
 
   if (contentType) {
@@ -52,6 +53,9 @@ function buildForwardHeaders(request: NextRequest) {
   }
   if (acceptLanguage) {
     headers.set("accept-language", acceptLanguage);
+  }
+  if (authorization) {
+    headers.set("authorization", authorization);
   }
   if (requestId) {
     headers.set("x-request-id", requestId);

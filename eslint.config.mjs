@@ -9,6 +9,7 @@ export default [
   {
     ignores: [
       ".next/**",
+      ".next-e2e/**",
       "coverage/**",
       "next-env.d.ts",
       "node_modules/**",

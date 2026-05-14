@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const signalSchema = z.enum(["logs", "metrics", "traces", "apm"]);
-export const severitySchema = z.enum(["info", "low", "medium", "high", "critical"]);
+export const severitySchema = z.enum(["low", "medium", "high", "critical"]);
 export const confidenceSchema = z.enum(["low", "medium", "high"]);
 export const analysisJobStatusSchema = z.enum(["pending", "running", "completed", "failed", "canceled"]);
 export const analysisJobPhaseSchema = z.enum([
@@ -160,6 +160,8 @@ export const traceInsightsResponseSchema = z.object({
   dependencyEdges: z.array(traceDependencyEdgeSchema)
 });
 
+export const analysisExportFormatSchema = z.enum(["json", "md"]);
+
 export const analysisJobAcceptedSchema = z.object({
   jobId: z.string(),
   status: analysisJobStatusSchema,
@@ -180,6 +182,8 @@ export const analysisJobSchema = z.object({
   phaseStartedAt: z.string().datetime().optional(),
   finishedAt: z.string().datetime().optional()
 });
+
+export const deleteAnalysisResponseSchema = z.object({});
 
 export type Signal = z.infer<typeof signalSchema>;
 export type Severity = z.infer<typeof severitySchema>;
@@ -202,3 +206,4 @@ export type TraceDependencyEdge = z.infer<typeof traceDependencyEdgeSchema>;
 export type TraceInsightsResponse = z.infer<typeof traceInsightsResponseSchema>;
 export type AnalysisJobAccepted = z.infer<typeof analysisJobAcceptedSchema>;
 export type AnalysisJob = z.infer<typeof analysisJobSchema>;
+export type AnalysisExportFormat = z.infer<typeof analysisExportFormatSchema>;

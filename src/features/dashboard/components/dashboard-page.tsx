@@ -1,11 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, CheckCircle2, Server } from "lucide-react";
+import { AlertCircle, BarChart3, CheckCircle2, Layers3, RadioTower, Server, type LucideIcon } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from "recharts";
 
 import { useAnalysesQuery, useAnalysisStatsQuery } from "@/features/analysis/api/analysis.queries";
-import type { Severity, Signal } from "@/features/analysis/api/analysis.schemas";
-import { buildAnalysisDashboardMetrics } from "@/features/analysis/domain/analysis.metrics";
+import type { Confidence, Severity, Signal } from "@/features/analysis/api/analysis.schemas";
+import {
+  buildAnalysisDashboardMetrics,
+  buildConfidenceDistribution,
+  buildSeverityDistribution,
+  buildTopAffectedServiceMetrics,
+  buildTrendMetrics,
+  hasMetricCounts,
+  type AnalysisStatsCountMetric
+} from "@/features/analysis/domain/analysis.metrics";
 import { severityOrder } from "@/features/analysis/domain/analysis.constants";
 import { SeverityBadge } from "@/features/analysis/components/severity-badge";
 import { AnalysisList } from "@/features/analysis/components/analysis-list";
@@ -23,19 +43,38 @@ import { LoadingState } from "@/shared/ui/state";
 function MetricCard({
   title,
   value,
-  description
+  description,
+  icon: Icon,
+  tone
 }: {
   title: string;
   value: string;
   description: string;
+  icon: LucideIcon;
+  tone: "primary" | "accent" | "emerald" | "slate";
 }) {
+  const toneClasses = {
+    primary: "from-cyan-500/20 via-primary/10 to-transparent text-primary ring-primary/20",
+    accent: "from-amber-400/20 via-accent/10 to-transparent text-amber-600 ring-amber-300/30",
+    emerald: "from-emerald-400/20 via-emerald-500/10 to-transparent text-emerald-600 ring-emerald-300/30",
+    slate: "from-slate-400/20 via-slate-500/10 to-transparent text-slate-600 ring-slate-300/30 dark:text-slate-300"
+  };
+
   return (
-    <Card>
+    <Card className="relative overflow-hidden">
+      <div className={`absolute inset-x-0 top-0 h-24 bg-gradient-to-b ${toneClasses[tone]}`} aria-hidden="true" />
       <CardHeader className="pb-3">
-        <CardDescription>{title}</CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
+        <div className="relative flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <CardDescription>{title}</CardDescription>
+            <CardTitle className="mt-2 truncate text-3xl">{value}</CardTitle>
+          </div>
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background/70 ring-1 ${toneClasses[tone]}`}>
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="relative">
         <p className="text-xs text-muted-foreground">{description}</p>
       </CardContent>
     </Card>
@@ -47,6 +86,25 @@ const signalLabelKeys: Record<Signal, TranslationKey> = {
   metrics: "common.metrics",
   traces: "common.traces",
   apm: "common.apm"
+};
+
+const confidenceLabelKeys: Record<Confidence, TranslationKey> = {
+  high: "confidence.high",
+  medium: "confidence.medium",
+  low: "confidence.low"
+};
+
+const severityChartColors: Record<Severity, string> = {
+  critical: "#dc2626",
+  high: "#ea580c",
+  medium: "#d97706",
+  low: "#059669"
+};
+
+const confidenceChartColors: Record<Confidence, string> = {
+  high: "#0891b2",
+  medium: "#7c3aed",
+  low: "#64748b"
 };
 
 function getApiStatusLabel({
@@ -67,6 +125,223 @@ function getApiStatusLabel({
   }
 
   return t("dashboard.apiStatus.online");
+}
+
+function formatTrendBucket(bucketStart: string) {
+  const bucketDate = new Date(bucketStart);
+
+  if (Number.isNaN(bucketDate.getTime())) {
+    return bucketStart;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit"
+  }).format(bucketDate);
+}
+
+function renderChartState({
+  isLoading,
+  isError,
+  isEmpty,
+  loadingTitle,
+  emptyTitle,
+  errorTitle,
+  retryTitle,
+  onRetry
+}: {
+  isLoading: boolean;
+  isError: boolean;
+  isEmpty: boolean;
+  loadingTitle: string;
+  emptyTitle: string;
+  errorTitle: string;
+  retryTitle: string;
+  onRetry: () => void;
+}) {
+  if (isLoading) {
+    return <LoadingState title={loadingTitle} />;
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start gap-2 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4" aria-hidden="true" />
+          <span>{errorTitle}</span>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          {retryTitle}
+        </Button>
+      </div>
+    );
+  }
+
+  if (isEmpty) {
+    return <p className="text-sm text-muted-foreground">{emptyTitle}</p>;
+  }
+
+  return null;
+}
+
+function TrendBucketsChart({
+  buckets,
+  isLoading,
+  isError,
+  onRetry
+}: {
+  buckets: Array<{ bucketStart: string; count: number }>;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  const chartState = renderChartState({
+    isLoading,
+    isError,
+    isEmpty: buckets.length === 0,
+    loadingTitle: t("dashboard.analytics.loading"),
+    emptyTitle: t("dashboard.analytics.empty"),
+    errorTitle: t("dashboard.analytics.error"),
+    retryTitle: t("common.retry"),
+    onRetry
+  });
+
+  if (chartState) {
+    return chartState;
+  }
+
+  const chartBuckets = buckets.map((bucket) => ({
+    ...bucket,
+    label: formatTrendBucket(bucket.bucketStart)
+  }));
+
+  return (
+    <div className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartBuckets} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} fontSize={12} />
+          <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
+          <Tooltip />
+          <Line
+            type="monotone"
+            dataKey="count"
+            stroke="#0891b2"
+            strokeWidth={2}
+            dot={{ r: 3 }}
+            activeDot={{ r: 5 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function DistributionChart<TCategory extends Severity | Confidence>({
+  metrics,
+  labelByCategory,
+  colorByCategory,
+  isLoading,
+  isError,
+  onRetry
+}: {
+  metrics: Array<AnalysisStatsCountMetric<TCategory>>;
+  labelByCategory: Record<TCategory, string>;
+  colorByCategory: Record<TCategory, string>;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  const chartState = renderChartState({
+    isLoading,
+    isError,
+    isEmpty: !hasMetricCounts(metrics),
+    loadingTitle: t("dashboard.analytics.loading"),
+    emptyTitle: t("dashboard.analytics.empty"),
+    errorTitle: t("dashboard.analytics.error"),
+    retryTitle: t("common.retry"),
+    onRetry
+  });
+
+  if (chartState) {
+    return chartState;
+  }
+
+  const chartMetrics = metrics.map((metric) => ({
+    ...metric,
+    label: labelByCategory[metric.category]
+  }));
+
+  return (
+    <div className="h-56">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartMetrics} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} fontSize={12} />
+          <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
+          <Tooltip />
+          <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+            {metrics.map((metric) => (
+              <Cell key={metric.category} fill={colorByCategory[metric.category]} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function TopServicesPanel({
+  services,
+  isLoading,
+  isError,
+  onRetry
+}: {
+  services: Array<{ service: string; count: number; percentage: number }>;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  const chartState = renderChartState({
+    isLoading,
+    isError,
+    isEmpty: services.length === 0,
+    loadingTitle: t("dashboard.analytics.loading"),
+    emptyTitle: t("dashboard.analytics.empty"),
+    errorTitle: t("dashboard.analytics.error"),
+    retryTitle: t("common.retry"),
+    onRetry
+  });
+
+  if (chartState) {
+    return chartState;
+  }
+
+  return (
+    <div className="space-y-3">
+      {services.map((serviceMetric) => (
+        <div key={serviceMetric.service} className="space-y-2">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="min-w-0 truncate font-medium">{serviceMetric.service}</span>
+            <span className="shrink-0 text-muted-foreground">
+              {serviceMetric.count} / {serviceMetric.percentage}%
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-muted">
+            <div
+              className="h-2 rounded-full bg-primary"
+              style={{ width: `${serviceMetric.percentage}%` }}
+              aria-hidden="true"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function RuntimeCapability({
@@ -167,6 +442,22 @@ export function DashboardPage() {
   const analysisStats = analysisStatsQuery.data?.data;
   const capabilities = capabilitiesQuery.data?.data;
   const highestSeverity = severityOrder.find((severity) => (analysisStats?.bySeverity[severity] ?? 0) > 0);
+  const trendMetrics = buildTrendMetrics(analysisStats);
+  const severityDistribution = buildSeverityDistribution(analysisStats);
+  const confidenceDistribution = buildConfidenceDistribution(analysisStats);
+  const topAffectedServices = buildTopAffectedServiceMetrics(analysisStats);
+  const severityLabelsByCategory: Record<Severity, string> = {
+    critical: t("severity.critical"),
+    high: t("severity.high"),
+    medium: t("severity.medium"),
+    low: t("severity.low")
+  };
+  const confidenceLabelsByCategory: Record<Confidence, string> = {
+    high: t(confidenceLabelKeys.high),
+    medium: t(confidenceLabelKeys.medium),
+    low: t(confidenceLabelKeys.low)
+  };
+  const retryAnalysisStats = () => void analysisStatsQuery.refetch();
 
   return (
     <>
@@ -189,22 +480,98 @@ export function DashboardPage() {
             t
           })}
           description={appConfig.apiUrl}
+          icon={RadioTower}
+          tone="primary"
         />
         <MetricCard
           title={t("dashboard.metrics.analyses.title")}
           value={String(analysisStats?.total ?? metrics.totalAnalyses)}
           description={t("dashboard.metrics.analyses.description")}
+          icon={BarChart3}
+          tone="accent"
         />
         <MetricCard
           title={t("dashboard.metrics.affectedServices.title")}
           value={String(metrics.affectedServices)}
           description={t("dashboard.metrics.affectedServices.description")}
+          icon={Server}
+          tone="emerald"
         />
         <MetricCard
           title={t("dashboard.metrics.evidenceItems.title")}
           value={String(metrics.evidenceItems)}
           description={t("dashboard.metrics.evidenceItems.description")}
+          icon={Layers3}
+          tone="slate"
         />
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("dashboard.analytics.trend.title")}</CardTitle>
+            <CardDescription>{t("dashboard.analytics.trend.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TrendBucketsChart
+              buckets={trendMetrics}
+              isLoading={analysisStatsQuery.isLoading}
+              isError={analysisStatsQuery.isError}
+              onRetry={retryAnalysisStats}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("dashboard.analytics.services.title")}</CardTitle>
+            <CardDescription>{t("dashboard.analytics.services.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TopServicesPanel
+              services={topAffectedServices}
+              isLoading={analysisStatsQuery.isLoading}
+              isError={analysisStatsQuery.isError}
+              onRetry={retryAnalysisStats}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("dashboard.analytics.severity.title")}</CardTitle>
+            <CardDescription>{t("dashboard.analytics.severity.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DistributionChart
+              metrics={severityDistribution}
+              labelByCategory={severityLabelsByCategory}
+              colorByCategory={severityChartColors}
+              isLoading={analysisStatsQuery.isLoading}
+              isError={analysisStatsQuery.isError}
+              onRetry={retryAnalysisStats}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("dashboard.analytics.confidence.title")}</CardTitle>
+            <CardDescription>{t("dashboard.analytics.confidence.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DistributionChart
+              metrics={confidenceDistribution}
+              labelByCategory={confidenceLabelsByCategory}
+              colorByCategory={confidenceChartColors}
+              isLoading={analysisStatsQuery.isLoading}
+              isError={analysisStatsQuery.isError}
+              onRetry={retryAnalysisStats}
+            />
+          </CardContent>
+        </Card>
       </div>
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_340px]">

@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   cancelAnalysisJob,
   createAnalysis,
+  deleteAnalysis,
+  exportAnalysis,
   getAnalysis,
   getAnalysisStats,
   getAnalysisJob,
@@ -12,6 +14,7 @@ import {
 } from "@/features/analysis/api/analysis.client";
 import type {
   AnalysisStatsFilter,
+  AnalysisExportFormat,
   AnalysisListFilter,
   CreateAnalysisRequest,
   ServicesFilter
@@ -97,6 +100,30 @@ export function useCancelAnalysisJobMutation() {
     mutationFn: (jobId: string) => cancelAnalysisJob(jobId),
     onSuccess: async (job) => {
       await queryClient.setQueryData(analysisQueryKeys.job(job.jobId), job);
+      await queryClient.invalidateQueries({ queryKey: analysisQueryKeys.all });
+    }
+  });
+}
+
+export function useAnalysisExportMutation(analysisId: string) {
+  return useMutation({
+    mutationFn: (format: AnalysisExportFormat) => exportAnalysis(analysisId, format)
+  });
+}
+
+export function useExportAnalysisMutation() {
+  return useMutation({
+    mutationFn: ({ analysisId, format }: { analysisId: string; format: AnalysisExportFormat }) =>
+      exportAnalysis(analysisId, format)
+  });
+}
+
+export function useDeleteAnalysisMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (analysisId: string) => deleteAnalysis(analysisId),
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: analysisQueryKeys.all });
     }
   });
