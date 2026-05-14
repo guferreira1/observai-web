@@ -12,17 +12,19 @@ on:
         required: true
         default: true
         type: boolean
+  push:
+    tags:
+      - "v*.*.*"
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
-  group: web-cd-${{ github.event.inputs.image_tag }}
+  group: web-cd-${{ github.ref_name }}-${{ github.event.inputs.image_tag || 'tag' }}
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/observai-web
+  IMAGE_NAME: observai/observai-web
 
 jobs:
   publish:
@@ -43,37 +45,49 @@ jobs:
             echo "dockerfile=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate image tag
+      - name: Resolve image tag
         if: steps.detect.outputs.dockerfile == 'true'
+        id: version
         shell: bash
         run: |
-          if [[ ! "${{ github.event.inputs.image_tag }}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
-            echo "Invalid image_tag. Use semantic versioning, for example: v0.1.0 or 0.1.0-alpha.1"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+          else
+            IMAGE_TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "Invalid image tag. Use semantic versioning, for example: v0.1.0 or 0.1.0-alpha.1"
             exit 1
           fi
+
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Set Docker tags
         if: steps.detect.outputs.dockerfile == 'true'
         id: tags
         shell: bash
         run: |
-          TAGS="${IMAGE_NAME}:${{ github.event.inputs.image_tag }}"
-          if [ "${{ github.event.inputs.publish_latest }}" = "true" ]; then
+          TAGS="${IMAGE_NAME}:${{ steps.version.outputs.image_tag }}"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAGS="$TAGS,${IMAGE_NAME}:latest"
+          elif [ "${{ github.event.inputs.publish_latest }}" = "true" ]; then
             TAGS="$TAGS,${IMAGE_NAME}:latest"
           fi
+
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         if: steps.detect.outputs.dockerfile == 'true'
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Login to Docker Hub
         if: steps.detect.outputs.dockerfile == 'true'
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker image
         if: steps.detect.outputs.dockerfile == 'true'
@@ -83,10 +97,10 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            NEXT_PUBLIC_OBSERVAI_API_URL=${{ vars.NEXT_PUBLIC_OBSERVAI_API_URL || '/api/observai' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            NEXT_PUBLIC_OBSERVAI_API_URL=${{ vars.NEXT_PUBLIC_OBSERVAI_API_URL || 'http://localhost:8080' }}
 
       - name: Skip Docker build
         if: steps.detect.outputs.dockerfile == 'false'
