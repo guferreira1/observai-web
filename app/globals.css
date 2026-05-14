@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 26% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 188 84% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 24% 95%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 214 24% 95%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 42 91% 55%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 18% 88%;
+    --input: 215 18% 88%;
+    --ring: 188 84% 32%;
+  }
+
+  .dark {
+    --background: 222 18% 10%;
+    --foreground: 210 24% 93%;
+    --card: 220 17% 14%;
+    --card-foreground: 210 24% 93%;
+    --primary: 184 72% 46%;
+    --primary-foreground: 210 24% 96%;
+    --secondary: 220 16% 18%;
+    --secondary-foreground: 210 24% 93%;
+    --muted: 220 16% 18%;
+    --muted-foreground: 215 14% 72%;
+    --accent: 42 88% 58%;
+    --accent-foreground: 222 33% 12%;
+    --destructive: 0 67% 57%;
+    --destructive-foreground: 210 24% 96%;
+    --border: 218 15% 25%;
+    --input: 218 15% 25%;
+    --ring: 184 72% 46%;
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at 12% 8%, hsl(var(--primary) / 0.16), transparent 28rem),
+      radial-gradient(circle at 88% 4%, hsl(var(--accent) / 0.12), transparent 24rem),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--secondary) / 0.58) 48%, hsl(var(--background)) 100%),
+      linear-gradient(90deg, hsl(var(--border) / 0.34) 1px, transparent 1px),
+      linear-gradient(180deg, hsl(var(--border) / 0.22) 1px, transparent 1px);
+    background-size: auto, auto, auto, 48px 48px, 48px 48px;
+    background-attachment: fixed;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes observai-fade-up {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes observai-soft-pulse {
+      0%,
+      100% {
+        opacity: 0.48;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 1;
+        transform: scale(1.18);
+      }
+    }
+
+    @keyframes observai-scan {
+      from {
+        transform: translateX(-100%);
+      }
+
+      to {
+        transform: translateX(100%);
+      }
+    }
+  }
+}
+
+@layer components {
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  .surface-panel {
+    @apply border bg-card/90 shadow-sm shadow-black/5 backdrop-blur-xl;
+  }
+
+  .glass-panel {
+    @apply border bg-card/80 shadow-[0_20px_70px_-45px_rgba(15,23,42,0.75)] backdrop-blur-xl;
+  }
+
+  .section-shell {
+    @apply rounded-lg border bg-card/60 p-1 shadow-sm shadow-black/5 backdrop-blur-xl;
+  }
+
+  .inner-surface {
+    @apply rounded-md border bg-background/60 shadow-sm shadow-black/5;
+  }
+
+  .animate-enter {
+    animation: observai-fade-up 420ms ease-out both;
+  }
+
+  .status-pulse {
+    animation: observai-soft-pulse 2.4s ease-in-out infinite;
+  }
+
+  .scan-line {
+    animation: observai-scan 4s linear infinite;
+  }
+}
